@@ -1,64 +1,66 @@
-import sounddevice as sd
-import scipy.io.wavfile as wav
-import numpy as np
-from groq import Groq
+from elevenlabs.client import ElevenLabs
 from dotenv import load_dotenv
 import os
 import tempfile
+import subprocess
+from elevenlabs import play
 
 load_dotenv()
 
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
 
-SAMPLE_RATE = 16000
-DURATION = 5
+VOICE_ID = "EXAVITQu4vr4xnSDxMaL"
 
-def record_audio():
-    """Record audio from microphone and return as wav bytes"""
+def speak(text):
+    print(f"Speaking: {text}")
+    
+    # New API method for newer ElevenLabs versions
+    audio = client.text_to_speech.convert(
+        text=text,
+        voice_id=VOICE_ID,
+        model_id="eleven_turbo_v2_5",
+        output_format="mp3_44100_128"
+    )
+    
+    # Save to temp file
+    temp_file = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+    for chunk in audio:
+        temp_file.write(chunk)
+    temp_file.close()
+    
+    print(f"Audio saved: {os.path.getsize(temp_file.name)} bytes")
+    
+    # Play with mpv directly
+    subprocess.run([
+        r"C:\ProgramData\chocolatey\lib\mpvio.install\tools\mpv.exe",
+        "--no-video",
+        temp_file.name
+    ])
+    
+    os.unlink(temp_file.name)
 
-    print("Listening.... (speak now)")
+def speak_to_bytes(text):
+    """Convert text to speech and return MP3 bytes (for server use)"""
+    
+    print(f"Generating audio for: {text}")
 
-    recording = sd.rec(
-        int(DURATION * SAMPLE_RATE),
-        samplerate=SAMPLE_RATE,
-        channels=1,
-        dtype=np.int16
+    audio = client.text_to_speech.convert(
+        text=text,
+        voice_id=VOICE_ID,
+        model_id="eleven_turbo_v2_5",
+        output_format="mp3_44100_128"
     )
 
-    sd.wait()
-    print("Recording done")
+    mp3_bytes = bytearray()
+    for chunk in audio:
+        if chunk:
+            mp3_bytes.extend(chunk)
 
-    temp_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-    wav.write(temp_file.name, SAMPLE_RATE, recording)
+    return bytes(mp3_bytes)
 
-    return temp_file.name
-
-def transcribe(audio_file_path):
-    """Send audio file to Groq Whisper and get text back"""
-
-    with open(audio_file_path, "rb") as audio_file:
-
-        response = client.audio.transcriptions .create(
-            model="Whisper-large-v3",
-            file=audio_file,
-            language="en"
-        )
-
-    return response.text
-
-def listen():
-    """Record and transcribe in one step"""
-    audio_path = record_audio()
-    text = transcribe(audio_path)
-
-    os.unlink(audio_path)
-
-    return text
 
 if __name__ == "__main__":
-    print("STT Test -- Speak after the prompt\n")
-
-    while True:
-        input("Press ENTER to start recording...")
-        text = listen()
-        print(f"You said:{text}\n")
+    print("TTS Test\n")
+    speak("Hello! Welcome to customer support. How can I help you today?")
+    speak("I'm sorry to hear that. Could you please share your order ID?")
+    speak("Thank you for your patience. I'll look into that right away.")
